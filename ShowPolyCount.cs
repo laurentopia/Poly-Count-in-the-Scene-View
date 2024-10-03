@@ -36,42 +36,43 @@ public class PolyCountSceneViewDisplay
 
 	static (int min, int max) GetPolyCountRangeRecursive(GameObject obj)
 	{
-		var minCount = 0;
-		var maxCount = 0;
-		var lodGroup = obj.GetComponent<LODGroup>();
-		if (lodGroup != null) {
-			var lods = lodGroup.GetLODs();
+		var minCount  = 0;
+		var maxCount  = 0;
+		var renderers = obj.GetComponentsInChildren<Renderer>().ToList();
+		//lodgroups
+		var lodGroups = obj.GetComponentsInChildren<LODGroup>();
+		foreach (var lodGroup in lodGroups) {
+			var lods        = lodGroup.GetLODs();
+			var firstLOD    = lods.First();
+			var lodMaxCount = firstLOD.renderers.Sum(r => GetRendererPolyCount(r));
+			maxCount += lodMaxCount;
 			if (lods.Length > 0) {
 				var lastLOD     = lods.Last();
-				var lodMinCount = lastLOD.renderers.Where(r => r != null && r.enabled && r.gameObject.activeInHierarchy).Sum(r => GetRendererPolyCount(r));
-				var firstLOD    = lods.First();
-				var lodMaxCount = firstLOD.renderers.Where(r => r != null && r.enabled && r.gameObject.activeInHierarchy).Sum(r => GetRendererPolyCount(r));
+				var lodMinCount = lastLOD.renderers.Sum(r => GetRendererPolyCount(r));
 				minCount += lodMinCount;
-				maxCount += lodMaxCount;
 			}
-		} else {
-			var objCount = obj.GetComponents<Renderer>().Where(r => r.enabled && r.gameObject.activeInHierarchy).Sum(r => GetRendererPolyCount(r));
-			minCount += objCount;
-			maxCount += objCount;
-			// Only recursively count child objects that are not part of an LODGroup
-			foreach (Transform child in obj.transform) {
-				var (childMin, childMax) =  GetPolyCountRangeRecursive(child.gameObject);
-				minCount                 += childMin;
-				maxCount                 += childMax;
+			//sanitize the list of renderers
+			foreach (var lod in lods) {
+				foreach (var r in lod.renderers) { renderers.Remove(r); }
 			}
+		}
+		//add children polycount (we've already sanitized the list)
+		foreach (var r in renderers) {
+			var polyCount = GetRendererPolyCount(r);
+			minCount += polyCount;
+			maxCount += polyCount;
 		}
 		return (minCount, maxCount);
 	}
 
 	static int GetRendererPolyCount(Renderer renderer)
 	{
+		if (!renderer.enabled || !renderer.gameObject.activeInHierarchy) return 0;
 		if (renderer is MeshRenderer) {
 			var meshFilter = renderer.GetComponent<MeshFilter>();
-			if (meshFilter != null && meshFilter.sharedMesh != null && renderer.gameObject.activeInHierarchy && renderer.enabled) { return meshFilter.sharedMesh.triangles.Length / 3; }
+			if (meshFilter != null && meshFilter.sharedMesh != null) { return meshFilter.sharedMesh.triangles.Length / 3; }
 		} else if (renderer is SkinnedMeshRenderer skinnedMeshRenderer) {
-			if (skinnedMeshRenderer.sharedMesh != null && skinnedMeshRenderer.gameObject.activeInHierarchy && skinnedMeshRenderer.enabled) {
-				return skinnedMeshRenderer.sharedMesh.triangles.Length / 3;
-			}
+			if (skinnedMeshRenderer.sharedMesh != null) { return skinnedMeshRenderer.sharedMesh.triangles.Length / 3; }
 		}
 		return 0;
 	}
